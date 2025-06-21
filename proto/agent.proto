@@ -1,0 +1,17 @@
+syntax = "proto3";
+
+package agent;
+
+option go_package = "./proto;agent";
+
+service Agent {
+	rpc Query(QueryRequest) returns (QueryResponse) {}
+}
+
+message QueryRequest {
+	string prompt = 1;
+}
+
+message QueryResponse {
+	string answer = 1;
+}
