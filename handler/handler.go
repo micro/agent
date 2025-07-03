@@ -1,9 +1,43 @@
 package handler
 
-import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sync"
+	"time"
+// ServiceCache caches the list of services for a short period to avoid repeated registry lookups
+type ServiceCache struct {
+	services []*registry.Service
+	expires  time.Time
+	mu       sync.Mutex
+}
+
+var serviceCache = &ServiceCache{}
+
+func getCachedServices() ([]*registry.Service, error) {
+	serviceCache.mu.Lock()
+	defer serviceCache.mu.Unlock()
+
+	if time.Now().Before(serviceCache.expires) && serviceCache.services != nil {
+		return serviceCache.services, nil
+	}
+
+	serviceList, err := registry.ListServices()
+	if err != nil {
+		return nil, err
+	}
+	var services []*registry.Service
+	for _, service := range serviceList {
+		srv, err := registry.GetService(service.Name)
+		if err != nil {
+			return nil, err
+		}
+		services = append(services, srv...)
+	}
+	serviceCache.services = services
+	serviceCache.expires = time.Now().Add(30 * time.Second) // cache for 30 seconds
+	return services, nil
+}
 
 	pb "github.com/micro/agent/proto"
 	"go-micro.dev/v5/client"
@@ -42,20 +76,21 @@ func (a *Agent) Query(ctx context.Context, req *pb.QueryRequest, rsp *pb.QueryRe
 }
 
 func (a *Agent) Command(ctx context.Context, req *pb.CommandRequest, rsp *pb.CommandResponse) error {
-	// get list of services
-	serviceList, err := registry.ListServices()
+	// get list of services (with caching)
+	services, err := getCachedServices()
 	if err != nil {
 		return errors.InternalServerError("agent.registry", err.Error())
 	}
 
-	// get all the endpoints per service
-	var services []*registry.Service
-	for _, service := range serviceList {
-		srv, err := registry.GetService(service.Name)
-		if err != nil {
-			return errors.InternalServerError("agent.registry", err.Error())
+	// Build a map for quick validation of service/endpoint
+	serviceEndpointMap := make(map[string]map[string]bool)
+	for _, srv := range services {
+		if _, ok := serviceEndpointMap[srv.Name]; !ok {
+			serviceEndpointMap[srv.Name] = make(map[string]bool)
 		}
-		services = append(services, srv...)
+		for _, ep := range srv.Endpoints {
+			serviceEndpointMap[srv.Name][ep.Name] = true
+		}
 	}
 
 	b, _ := json.Marshal(services)
@@ -98,7 +133,10 @@ func (a *Agent) Command(ctx context.Context, req *pb.CommandRequest, rsp *pb.Com
 	}
 
 	var call Call
-	json.Unmarshal([]byte(resp.Text), &call)
+	if err := json.Unmarshal([]byte(resp.Text), &call); err != nil {
+		rsp.Error = "Failed to parse LLM output: " + err.Error()
+		return nil
+	}
 
 	fmt.Println("agent.call\n", resp.Text, call)
 
@@ -107,9 +145,14 @@ func (a *Agent) Command(ctx context.Context, req *pb.CommandRequest, rsp *pb.Com
 		return nil
 	}
 
-	// TODO: validate is a service in the list
+	// Validate service and endpoint
 	if len(call.Service) == 0 || len(call.Endpoint) == 0 {
-		return errors.InternalServerError("agent.call", "unable to satisfy request")
+		rsp.Error = "Missing service or endpoint in LLM output"
+		return nil
+	}
+	if eps, ok := serviceEndpointMap[call.Service]; !ok || !eps[call.Endpoint] {
+		rsp.Error = "Invalid service or endpoint selected by LLM"
+		return nil
 	}
 
 	// call a service
@@ -149,12 +192,15 @@ func (a *Agent) Command(ctx context.Context, req *pb.CommandRequest, rsp *pb.Com
 	}
 
 	var res Result
-	json.Unmarshal([]byte(resp.Text), &res)
+	if err := json.Unmarshal([]byte(resp.Text), &res); err != nil {
+		rsp.Error = "Failed to parse LLM output: " + err.Error()
+		return nil
+	}
 
 	fmt.Println("agent.result", res, resp.Text)
 
 	if len(res.Error) > 0 {
-		rsp.Error = err.Error()
+		rsp.Error = res.Error
 		return nil
 	}
 
