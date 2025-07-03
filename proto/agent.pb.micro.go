@@ -28,7 +28,10 @@ var _ server.Option
 // Client API for Agent service
 
 type AgentService interface {
+	// A request with no action
 	Query(ctx context.Context, in *QueryRequest, opts ...client.CallOption) (*QueryResponse, error)
+	// A command that takes action
+	Command(ctx context.Context, in *CommandRequest, opts ...client.CallOption) (*CommandResponse, error)
 }
 
 type agentService struct {
@@ -53,15 +56,29 @@ func (c *agentService) Query(ctx context.Context, in *QueryRequest, opts ...clie
 	return out, nil
 }
 
+func (c *agentService) Command(ctx context.Context, in *CommandRequest, opts ...client.CallOption) (*CommandResponse, error) {
+	req := c.c.NewRequest(c.name, "Agent.Command", in)
+	out := new(CommandResponse)
+	err := c.c.Call(ctx, req, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // Server API for Agent service
 
 type AgentHandler interface {
+	// A request with no action
 	Query(context.Context, *QueryRequest, *QueryResponse) error
+	// A command that takes action
+	Command(context.Context, *CommandRequest, *CommandResponse) error
 }
 
 func RegisterAgentHandler(s server.Server, hdlr AgentHandler, opts ...server.HandlerOption) error {
 	type agent interface {
 		Query(ctx context.Context, in *QueryRequest, out *QueryResponse) error
+		Command(ctx context.Context, in *CommandRequest, out *CommandResponse) error
 	}
 	type Agent struct {
 		agent
@@ -76,4 +93,8 @@ type agentHandler struct {
 
 func (h *agentHandler) Query(ctx context.Context, in *QueryRequest, out *QueryResponse) error {
 	return h.AgentHandler.Query(ctx, in, out)
+}
+
+func (h *agentHandler) Command(ctx context.Context, in *CommandRequest, out *CommandResponse) error {
+	return h.AgentHandler.Command(ctx, in, out)
 }

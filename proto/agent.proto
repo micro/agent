@@ -5,13 +5,25 @@ package agent;
 option go_package = "./proto;agent";
 
 service Agent {
+	// A request with no action
 	rpc Query(QueryRequest) returns (QueryResponse) {}
+	// A command that takes action
+	rpc Command(CommandRequest) returns (CommandResponse) {}
 }
 
 message QueryRequest {
-	string prompt = 1;
+	string question = 1;
 }
 
 message QueryResponse {
 	string answer = 1;
+}
+
+message CommandRequest {
+	string request = 1;
+}
+
+message CommandResponse {
+	string response = 1;
+	string error = 2;
 }
