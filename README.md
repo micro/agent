@@ -27,7 +27,18 @@ Run the agent
 micro run
 ```
 
-Query it via the CLI
+### Query the AI
+
+Query it the AI directly
+
 ```
-micro agent query --prompt "Tell me about Islam"
+micro agent query --question "Tell me about Islam"
+```
+
+### Use a command
+
+Make a request that will issue service calls e.g call helloworld service
+
+```
+micro agent command --request "Say hello"
 ```
