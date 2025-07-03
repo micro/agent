@@ -1,10 +1,33 @@
 package handler
 
+import (
 	"context"
 	"encoding/json"
 	"fmt"
 	"sync"
 	"time"
+
+	pb "github.com/micro/agent/proto"
+	"go-micro.dev/v5/client"
+	"go-micro.dev/v5/errors"
+	"go-micro.dev/v5/genai"
+	"go-micro.dev/v5/registry"
+)
+
+type Agent struct{}
+
+type Call struct {
+	Service  string      `json:"service"`
+	Endpoint string      `json:"endpoint"`
+	Request  interface{} `json:"request"`
+	Error    string      `json:"error"`
+}
+
+type Result struct {
+	Answer interface{} `json:"answer"`
+	Error  string      `json:"error"`
+}
+
 // ServiceCache caches the list of services for a short period to avoid repeated registry lookups
 type ServiceCache struct {
 	services []*registry.Service
@@ -37,27 +60,6 @@ func getCachedServices() ([]*registry.Service, error) {
 	serviceCache.services = services
 	serviceCache.expires = time.Now().Add(30 * time.Second) // cache for 30 seconds
 	return services, nil
-}
-
-	pb "github.com/micro/agent/proto"
-	"go-micro.dev/v5/client"
-	"go-micro.dev/v5/errors"
-	"go-micro.dev/v5/genai"
-	"go-micro.dev/v5/registry"
-)
-
-type Agent struct{}
-
-type Call struct {
-	Service  string      `json:"service"`
-	Endpoint string      `json:"endpoint"`
-	Request  interface{} `json:"request"`
-	Error    string      `json:"error"`
-}
-
-type Result struct {
-	Answer interface{} `json:"answer"`
-	Error  string      `json:"error"`
 }
 
 func New() *Agent {
