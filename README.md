@@ -29,7 +29,7 @@ micro run
 
 ### Query the AI
 
-Query it the AI directly
+Query the LLM directly
 
 ```
 micro agent query --question "Tell me about Islam"
